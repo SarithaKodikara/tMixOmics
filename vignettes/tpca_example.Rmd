@@ -1,0 +1,140 @@
+---
+title: "tpca_example"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{tpca_example}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, message=FALSE, warning=FALSE}
+library(mixOmics)
+library(tMixOmics)
+library(dplyr)
+library(plotly)
+```
+
+# Introduction
+
+In this vignette, we will demonstrate how to use the `tpca` function from the `tMixOmics` package. `tpca` is the R implementation of the tensor dimension reduction method described in the paper ["Dimensionality reduction of longitudinal ’omics data using modern tensor factorizations"](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1010212). To demonstrate the method, we will use the data from the first case study of the paper, which is a longitudinal study investigating the reconstitution of the gut microbiome in healthy individuals following antibiotics administration. The data is available in the `tMixOmics` package as `data_Suez`.
+
+# Load the data
+
+The data is already preprocessed and stored in the `data_Suez` data frame. Refer to [Suez2018.ipynb](https://github.com/UriaMorP/tcam_analysis_notebooks/blob/main/Suez2018/Suez2018.ipynb) for details.
+
+```{r}
+data("data_Suez")
+
+# convert to factor
+data_Suez$rGroup <- factor(data_Suez$rGroup)
+
+data_Suez<-data_Suez%>%
+  arrange(rGroup, Participant, rDay)
+```
+
+# The tensor data structure
+
+Before we can apply the `tpca`, we must reformat our dataset, that is currently in the form of data frame. While doing so, we must make sure to maintain the information regarding indices for subjects, features (taxa annotations) and timepoints.
+
+```{r}
+# Calculate n, p, t
+n <- length(unique(data_Suez$Participant)) # number of individuals
+p <- ncol(data_Suez)-6 # number of features (exclude first 6 that is the meta data)
+t <- length(unique(data_Suez$rDay)) # number of days
+#n; p; t
+
+# Initialize clr_array and diet_array
+logfold_array <- array(0, dim = c(n, p, t))
+
+# Loop over days
+for (i in 1:t) {
+  day <- unique(data_Suez$rDay)[i]
+  
+  # Get index for individuals with the specific day
+  (indiv_index <- which(data_Suez$rDay == day))
+  
+  # Fill array and diet_array
+  logfold_array[,,i] <- as.matrix(data_Suez[indiv_index, -c(1:6) ])
+}
+```
+
+# TCAM results
+
+```{r echo=FALSE}
+# Perform TPCA
+tpca_res <- tpca(logfold_array,  ncomp = 3)
+
+# Save component scores
+  res_df<-data.frame(F1=tpca_res$variates[,1],
+                     F2=tpca_res$variates[,2])
+  
+  #Include Participant ID as rowname and include group details
+  rownames(res_df)<-unique(data_Suez$Participant)
+  res_df$Group <- data_Suez$rGroup[match(rownames(res_df), data_Suez$Participant)]
+
+# Save loading values and select top 20 loading values
+  loadings_cmp1 <- tpca_res$loadings[, 1]
+  
+  #Sort the loadings based on absolute value
+  sorted_indices_cmp1 <- order(abs(loadings_cmp1), decreasing = TRUE)
+  sorted_otus_comp1 <- colnames(data_Suez[, -c(1:6) ])[sorted_indices_cmp1[1:20]]
+  sorted_loadings_comp1 <- loadings_cmp1[sorted_indices_cmp1[1:20]]
+
+  plot_data <- data.frame(OTUs = sorted_otus_comp1, 
+                          Loadings = sorted_loadings_comp1)
+  plot_data$OTUs <- factor(plot_data$OTUs, 
+                             levels = plot_data$OTUs, ordered = TRUE)
+```
+
+## Sample plot
+
+```{r fig1, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+
+# Custom color palette
+custom_colors <- c("CTR" = "blue", "FMT" = "orange", "PBX" = "green")  # Replace with your actual group names
+
+# Convert res_df into a plotly object with customized colors
+plot_ly(data = res_df, 
+        x = ~F1, 
+        y = ~F2, 
+        color = ~Group, 
+        colors = custom_colors,  # Use custom colors for groups
+        text = rownames(res_df),  # Hover text with row names
+        type = 'scatter', 
+        mode = 'markers',
+        marker = list(size = 15),
+        hoverinfo = "text") %>%  # Adjust size of the points
+    layout(title = "Tensor PCA",
+           xaxis = list(title = "F1"),
+           yaxis = list(title = "F2"),
+           showlegend = TRUE,
+           legend = list(title = list(text = "Group")))
+
+```
+
+## Loading plot 
+
+```{r fig2, fig.width=8, fig.height=6, message=FALSE, warning=FALSE}
+plot_ly(data = plot_data,
+        x = ~Loadings,
+        y = ~OTUs,
+        type = 'bar',
+        width= 1000,
+        height= 400,
+        marker = list(color = 'grey'),
+  showlegend=F) %>%
+  layout(
+    title = "Loadings Plot (Component 1)",
+    xaxis = list(title = "Loadings"),
+    yaxis = list(title = "OTUs"),
+    bargap = 0.2  # Adjust the gap between bars if needed
+  )
+```
+

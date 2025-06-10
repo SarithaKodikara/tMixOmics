@@ -1,0 +1,22 @@
+Package: tMixOmics
+Type: Package
+Title: Tensor PCA 
+Version: 0.1.0
+Author: Brendan Lu
+Maintainer: Saritha Kodikara <saritha.kodikara@unimelb.edu.au>
+Description: Tensor PCA based on TCAM python package
+License: Apache License (>= 2)
+Encoding: UTF-8
+LazyData: true
+Suggests: 
+    rmarkdown,
+    testthat (>= 3.0.0),
+    tidyr
+Config/testthat/edition: 3
+Imports: 
+    knitr,
+    mixOmics
+RoxygenNote: 7.3.2
+Depends: 
+    R (>= 3.5)
+VignetteBuilder: knitr
